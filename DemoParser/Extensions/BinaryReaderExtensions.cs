@@ -25,7 +25,7 @@ namespace DemoParser.Extensions
             return size;
         }
 
-        public static void ReadCmdInfo(this BinaryReader reader, ref DemoInfo info)
+        public static void ReadCmdInfo(this BinaryReader reader, ref CommandInfo info)
         {
             info.Splits[0] = ReadSplit(ref reader);
             info.Splits[1] = ReadSplit(ref reader);
@@ -33,8 +33,7 @@ namespace DemoParser.Extensions
 
         private static unsafe Split ReadSplit(ref BinaryReader reader)
         {
-            var buffer = new byte[sizeof(Split)];
-            reader.Read(buffer, 0, sizeof(Split));
+            var buffer = reader.ReadBytes(sizeof(Split));
             return buffer.ToImpl<Split>();
         }
 

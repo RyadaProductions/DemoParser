@@ -38,17 +38,14 @@ namespace DemoParser
 
             var headerBytes = new byte[sizeof(DemoHeader)];
             _binaryReader.Read(headerBytes, 0, sizeof(DemoHeader));
-            fixed (byte* headerPtr = headerBytes)
-            {
-                var headerStruct = Unsafe.ReadUnaligned<DemoHeader>(headerPtr);
-                var header = headerStruct.ConvertToClass();
+            var headerStruct = headerBytes.ToImpl<DemoHeader>();
+            var header = headerStruct.ConvertToClass();
 
-                if (header.Demofilestamp == DEMO_HEADER_ID && header.Demoprotocol == DEMO_PROTOCOL) return header;
+            if (header.Demofilestamp == DEMO_HEADER_ID && header.Demoprotocol == DEMO_PROTOCOL) return header;
 
-                _binaryReader.Close();
-                _binaryReader.Dispose();
-                throw new FileLoadException("Corrupt header file detected, aborting the parsing process");
-            }
+            _binaryReader.Close();
+            _binaryReader.Dispose();
+            throw new FileLoadException("Corrupt header file detected, aborting the parsing process");
         }
 
         public void PlayDemoFile(string filePath)
@@ -76,20 +73,15 @@ namespace DemoParser
                 case DemoCmds.Stop:
                     return;
                 case DemoCmds.Consolecmd:
-                    _binaryReader.ReadRawData(null, _binaryReader.ReadInt32() * 8);
                     break;
                 case DemoCmds.Datatables:
-                    _binaryReader.ReadRawData(null, _binaryReader.ReadInt32() * 8);
                     //TODO: parse DataTable packet
                     //TODO: Map weapons and bind all entities
                     break;
                 case DemoCmds.Stringtables:
-                    _binaryReader.ReadRawData(null, _binaryReader.ReadInt32() * 8);
                     //TODO: ParseHeader stringtable packet
                     break;
                 case DemoCmds.Usercmd:
-                    _binaryReader.ReadUInt32();
-                    _binaryReader.ReadRawData(null, _binaryReader.ReadInt32() * 8);
                     break;
                 case DemoCmds.Signon:
                 case DemoCmds.Packet:
@@ -100,71 +92,60 @@ namespace DemoParser
             }
         }
 
-        public unsafe void HandleDemoPacket()
+        public void HandleDemoPacket()
         {
-            var info = new DemoInfo(new Split[2]);
-            int dummy = 0;
-            fixed (byte* payload = new byte[262144 - 4])
+            var info = new CommandInfo(new Split[2]);
+            var dummy = 0;
+
+            _binaryReader.ReadCmdInfo(ref info);
+            _binaryReader.ReadSequenceInfo(ref dummy, ref dummy);
+
+            var length = _binaryReader.ReadInt32();
+
+            var chunk = _binaryReader.ReadBytes(length).AsSpan();
+            var offset = 0;
+
+            while (offset < chunk.Length)
             {
+                //TODO: this needs to be bitoperations instead of straight up 4 bytes
+                var cmd = chunk.Slice(offset, 4).ToImplSpan<int>();
+                offset += 4;
+                var size = chunk.Slice(offset, 4).ToImplSpan<int>();
+                offset += 4;
 
-                _binaryReader.ReadCmdInfo(ref info);
-                _binaryReader.ReadSequenceInfo(ref dummy, ref dummy);
+                var messageBytes = chunk.Slice(offset, size);
+                offset += length;
 
-                var timer = new Timer();
-                if (timer)
-                {
+                var messageType = (UserCommands)cmd;
 
-                }
+                ParseMessageBuffer(messageType, messageBytes);
 
-                var test = ReadProtobufVarInt();
-                //Todo: implement the rest of HandleDemoPacket()
+
             }
+            //Todo: implement the rest of HandleDemoPacket()
         }
 
-
-        private const uint MSB_1 = 0x00000080;
-        private const uint MSB_2 = 0x00008000;
-        private const uint MSB_3 = 0x00800000;
-        private const uint MSB_4 = 0x80000000;
-
-        private const uint MSK_1 = 0x0000007F;
-        private const uint MSK_2 = 0x00007F00;
-        private const uint MSK_3 = 0x007F0000;
-        private const uint MSK_4 = 0x7F000000;
-
-        public int ReadProtobufVarInt()
+        private unsafe void ParseMessageBuffer(UserCommands messageType, ReadOnlySpan<byte> buffer)
         {
-            // Start by overflowingly reading 32 bits.
-            // Reading beyond the buffer contents is safe in this case,
-            // because the sled ensures that we stay inside of the buffer.
-            var buf = _binaryReader.ReadInt32();
-            _binaryReader.BaseStream.Position--;
-
-            // always take the first bytes; others if necessary
-            var result = buf & MSK_1;
-            if ((buf & MSB_1) == 0)
+            switch (messageType)
             {
-                _binaryReader.BaseStream.Position += 1 * 8;
-                return (int)result;
+                case UserCommands.PacketEntities:
+                    break;
+                case UserCommands.GameEventList:
+                    break;
+                case UserCommands.GameEvent:
+                    break;
+                case UserCommands.CreateStringTable:
+                    break;
+                case UserCommands.UpdateStringTable:
+                    break;
+                case UserCommands.Tick:
+                    break;
+                case UserCommands.UserMessage:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(messageType), messageType, null);
             }
-            result |= (buf & MSK_2) >> 1;
-            if ((buf & MSB_2) == 0)
-            {
-
-                _binaryReader.BaseStream.Position += 2 * 8;
-                return (int)result;
-            }
-
-            result |= (buf & MSK_3) >> 2;
-            if ((buf & MSB_3) == 0)
-            {
-                _binaryReader.BaseStream.Position += 3 * 8;
-                return (int)result;
-            }
-            result |= (buf & MSK_4) >> 3;
-            if ((buf & MSB_4) != 0) _binaryReader.BaseStream.Position += 4 * 8;
-
-            return unchecked((int)result);
         }
     }
 }
